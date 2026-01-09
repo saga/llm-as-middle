@@ -29,30 +29,30 @@ stateDiagram-v2
         via LiteLLM proxy
         
         Input: search_query
-        Output: page_links[]
+        Output: page_links (list)
     end note
     
     note right of FetchPages
         Fetches full content for each page
         Runs concurrently for performance
         
-        Input: page_links[]
-        Output: pages_content[]
+        Input: page_links (list)
+        Output: pages_content (list)
     end note
     
     note right of SaveToS3
         Archives all page content to S3
         with metadata and timestamps
         
-        Input: pages_content[]
-        Output: s3_urls[]
+        Input: pages_content (list)
+        Output: s3_urls (list)
     end note
     
     note right of Summarize
         Uses LLM to generate summary
         with key points and references
         
-        Input: user_prompt, pages_content[]
+        Input: user_prompt, pages_content (list)
         Output: final_response
     end note
 ```
@@ -65,11 +65,11 @@ graph TB
     
     A -->|search_query| B[Search Confluence Node]
     
-    B -->|page_links[]| C[Fetch Pages Node]
+    B -->|page_links| C[Fetch Pages Node]
     
-    C -->|pages_content[]| D[Save to S3 Node]
+    C -->|pages_content| D[Save to S3 Node]
     
-    D -->|s3_urls[]| E[Summarize Node]
+    D -->|s3_urls| E[Summarize Node]
     
     E -->|final_response| End([Response to User])
     
@@ -97,39 +97,39 @@ classDiagram
     class AgentState {
         +string user_prompt
         +string search_query
-        +list~dict~ search_results
-        +list~string~ page_links
-        +list~dict~ pages_content
-        +list~string~ s3_urls
+        +list search_results
+        +list page_links
+        +list pages_content
+        +list s3_urls
         +string summary
         +string final_response
-        +Sequence~dict~ messages
-        +list~string~ errors
+        +Sequence messages
+        +list errors
     }
     
     class Node1_AnalyzePrompt {
         +analyze_prompt_node()
-        Updates: search_query, messages
+        Updates search_query and messages
     }
     
     class Node2_SearchConfluence {
         +search_confluence_node()
-        Updates: search_results, page_links
+        Updates search_results and page_links
     }
     
     class Node3_FetchPages {
         +fetch_pages_node()
-        Updates: pages_content, errors
+        Updates pages_content and errors
     }
     
     class Node4_SaveToS3 {
         +save_to_s3_node()
-        Updates: s3_urls, errors
+        Updates s3_urls and errors
     }
     
     class Node5_Summarize {
         +summarize_node()
-        Updates: summary, final_response, messages
+        Updates summary, final_response and messages
     }
     
     AgentState <|-- Node1_AnalyzePrompt
