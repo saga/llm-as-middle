@@ -1,4 +1,4 @@
-"""LangGraph工作流定义"""
+"""LangGraph workflow definition"""
 import logging
 from langgraph.graph import StateGraph, END
 
@@ -15,19 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 def create_agent_graph():
-    """创建Agent工作流图"""
+    """Create Agent workflow graph"""
     
-    # 创建图
+    # Create graph
     workflow = StateGraph(AgentState)
     
-    # 添加节点
+    # Add nodes
     workflow.add_node("analyze_prompt", analyze_prompt_node)
     workflow.add_node("search_confluence", search_confluence_node)
     workflow.add_node("fetch_pages", fetch_pages_node)
     workflow.add_node("save_to_s3", save_to_s3_node)
     workflow.add_node("summarize", summarize_node)
     
-    # 定义边（工作流）
+    # Define edges (workflow)
     workflow.set_entry_point("analyze_prompt")
     
     workflow.add_edge("analyze_prompt", "search_confluence")
@@ -36,30 +36,30 @@ def create_agent_graph():
     workflow.add_edge("save_to_s3", "summarize")
     workflow.add_edge("summarize", END)
     
-    # 编译图
+    # Compile graph
     app = workflow.compile()
     
     logger.info("Agent graph created successfully")
     return app
 
 
-# 全局实例
+# Global instance
 agent_graph = create_agent_graph()
 
 
 async def run_agent(user_prompt: str) -> dict:
     """
-    运行Agent处理用户请求
+    Run Agent to process user request
     
     Args:
-        user_prompt: 用户的问题或请求
+        user_prompt: User's question or request
         
     Returns:
-        包含最终响应的字典
+        Dictionary containing final response
     """
     logger.info(f"Running agent for prompt: {user_prompt}")
     
-    # 初始化状态
+    # Initialize state
     initial_state: AgentState = {
         "user_prompt": user_prompt,
         "search_query": "",
@@ -74,7 +74,7 @@ async def run_agent(user_prompt: str) -> dict:
     }
     
     try:
-        # 运行图
+        # Run graph
         final_state = await agent_graph.ainvoke(initial_state)
         
         logger.info("Agent execution completed successfully")
@@ -91,7 +91,7 @@ async def run_agent(user_prompt: str) -> dict:
         logger.error(f"Agent execution failed: {e}", exc_info=True)
         return {
             "success": False,
-            "response": f"处理失败：{str(e)}",
+            "response": f"Processing failed: {str(e)}",
             "pages_count": 0,
             "s3_urls": [],
             "errors": [str(e)]

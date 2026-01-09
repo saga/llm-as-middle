@@ -1,5 +1,88 @@
 # 变更日志
 
+## v0.3.0 - MSAL认证集成 (2026-01-09)
+
+### 🔐 新增功能
+
+#### Azure AD MSAL认证
+- **Microsoft Authentication Library (MSAL)集成**: 使用MSAL获取Azure AD访问令牌
+- **Client Credentials流程**: 通过Tenant ID、Client ID和Client Secret获取token
+- **自动Token管理**: MSAL自动处理token缓存和刷新
+- **LiteLLM集成**: 获取的token用于调用LiteLLM proxy
+
+#### 新增模块
+- `auth/msal_auth.py`: MSAL Token管理器实现
+- `auth/__init__.py`: 认证模块接口
+
+#### 配置变更
+- **新环境变量**:
+  - `AZURE_TENANT_ID`: Azure AD租户ID
+  - `AZURE_CLIENT_ID`: 应用客户端ID
+  - `AZURE_CLIENT_SECRET`: 客户端密钥
+  - `AZURE_SCOPE`: 认证scope（默认: `https://cognitiveservices.azure.com/.default`）
+- **移除环境变量**:
+  - `OPENAI_API_KEY`: 不再需要，使用MSAL token代替
+  - `LITELLM_API_KEY`: 不再需要，使用MSAL token代替
+
+### 📚 新增文档
+- `MSAL_AUTH_GUIDE.md`: 详细的MSAL认证配置指南
+- `QUICKSTART_MSAL.md`: 快速开始配置步骤
+- `.env.example.full`: 完整的配置示例文件
+- `test_msal_auth.py`: MSAL认证测试脚本
+
+### 🔧 代码更新
+- `agent/nodes.py`: 
+  - 修改LLM初始化使用MSAL token
+  - 新增`get_llm()`函数自动获取和配置token
+- `.env.example`: 更新为MSAL认证配置
+- `README.md`: 添加MSAL认证说明
+
+### 🧪 测试工具
+运行测试脚本验证配置：
+```bash
+python test_msal_auth.py
+```
+
+### 📦 依赖更新
+```toml
+msal = ">=1.24.0"  # Microsoft Authentication Library
+```
+
+### ⚠️ 破坏性变更
+- LLM认证方式从静态API key改为动态MSAL token
+- 需要在Azure Portal配置应用注册
+- 环境变量配置有较大变化，请参考 `QUICKSTART_MSAL.md`
+
+### 🔄 迁移指南
+从v0.2.0升级到v0.3.0:
+
+1. **Azure Portal配置**:
+   - 创建Azure AD应用注册
+   - 获取Tenant ID、Client ID、Client Secret
+   - 配置API权限并授予管理员同意
+
+2. **更新环境变量**:
+   ```bash
+   # 删除
+   - OPENAI_API_KEY
+   - LITELLM_API_KEY
+   
+   # 添加
+   + AZURE_TENANT_ID
+   + AZURE_CLIENT_ID
+   + AZURE_CLIENT_SECRET
+   + AZURE_SCOPE
+   ```
+
+3. **测试认证**:
+   ```bash
+   python test_msal_auth.py
+   ```
+
+详细步骤: [QUICKSTART_MSAL.md](QUICKSTART_MSAL.md)
+
+---
+
 ## v0.2.0 - LangGraph智能Agent重构 (2026-01-09)
 
 ### 🚀 重大变更

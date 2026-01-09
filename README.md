@@ -58,14 +58,17 @@ cp .env.example .env
 
 必需的环境变量：
 ```env
+# Azure AD认证（用于获取LiteLLM访问令牌）
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+AZURE_SCOPE=https://cognitiveservices.azure.com/.default
+
 # Confluence MCP（通过LiteLLM调用）
 LITELLM_BASE_URL=http://localhost:4000
-LITELLM_API_KEY=your-key
 CONFLUENCE_MODEL=confluence-mcp
 
 # LLM（用于意图分析和总结）
-OPENAI_API_KEY=your-openai-key
-OPENAI_API_BASE=https://api.openai.com/v1
 LLM_MODEL=gpt-4
 
 # AWS S3（用于文档归档）
@@ -77,6 +80,8 @@ S3_BUCKET=confluence-docs-backup
 # 可选配置
 SEARCH_LIMIT=10  # 最多搜索多少个页面
 ```
+
+**重要**: 详细的Azure AD认证配置请参考 [MSAL认证集成说明](MSAL_AUTH_GUIDE.md)
 
 ### 2. 安装依赖
 
@@ -172,6 +177,16 @@ kubectl logs -f deployment/confluence-agent
 
 ## 🔧 开发
 
+### 认证机制
+
+本项目使用 **Microsoft Authentication Library (MSAL)** 实现Azure AD认证：
+
+1. **Client Credentials流程**: 使用Azure AD应用的Client ID和Secret获取访问令牌
+2. **自动Token管理**: MSAL自动处理token缓存和刷新
+3. **与LiteLLM集成**: 获取的token用于调用LiteLLM proxy
+
+详细配置指南: [MSAL_AUTH_GUIDE.md](MSAL_AUTH_GUIDE.md)
+
 ### 项目结构
 
 ```
@@ -180,12 +195,16 @@ kubectl logs -f deployment/confluence-agent
 │   ├── nodes.py           # 工作流节点（5个步骤）
 │   ├── graph.py           # LangGraph图定义
 │   └── __init__.py
+├── auth/                  # 认证模块
+│   ├── msal_auth.py      # MSAL Token管理器
+│   └── __init__.py
 ├── clients/               # 外部服务客户端
 │   ├── confluence.py     # Confluence MCP客户端
 │   └── confluence_mcp_direct.py  # 直接MCP连接（备选）
 ├── server.py             # MCP Server定义
 ├── main.py               # 应用入口
 ├── k8s.yml               # Kubernetes配置
+├── MSAL_AUTH_GUIDE.md    # MSAL认证配置指南
 └── pyproject.toml        # 项目依赖
 ```
 

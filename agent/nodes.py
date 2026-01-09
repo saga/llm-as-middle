@@ -1,27 +1,54 @@
-"""LangGraph Agent节点定义"""
+"""LangGraph Agent node definitions"""
 import os
 import json
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 import boto3
+from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from clients.confluence import search_pages, get_page
+from auth import get_access_token
 from .state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# 初始化LLM
-llm = ChatOpenAI(
-    model=os.getenv("LLM_MODEL", "gpt-4"),
-    temperature=0.7,
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    openai_api_base=os.getenv("OPENAI_API_BASE")
-)
 
-# 初始化S3客户端
+# Pydantic model definitions
+class SearchQuery(BaseModel):
+    """Confluence search query structure"""
+    query: str = Field(description="CQL search query string")
+    reasoning: str = Field(description="Brief explanation of why this query was generated")
+
+
+class DocumentSummary(BaseModel):
+    """Document summary structure"""
+    answer: str = Field(description="Direct answer to user's question")
+    key_points: list[str] = Field(description="Key points extracted from documents")
+    references: list[dict[str, str]] = Field(description="Referenced documents with title and url")
+
+# Initialize LLM - using MSAL token
+def get_llm():
+    """Get LLM instance configured with MSAL authentication"""
+    # Get Azure AD access token
+    access_token = get_access_token()
+    
+    from pydantic import SecretStr
+    
+    return ChatOpenAI(
+        model=os.getenv("LLM_MODEL", "gpt-4"),
+        temperature=0.7,
+        api_key=SecretStr(access_token),  # Use MSAL token as API key
+        base_url=os.getenv("LITELLM_BASE_URL", "http://localhost:4000"),
+        default_headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+# Initialize LLM
+llm = get_llm()
+
+# Initialize S3 client
 s3_client = boto3.client(
     's3',
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -32,54 +59,53 @@ S3_BUCKET = os.getenv("S3_BUCKET", "confluence-docs-backup")
 
 
 async def analyze_prompt_node(state: AgentState) -> dict[str, Any]:
-    """节点1: 分析用户prompt，生成搜索查询"""
+    """Node 1: Analyze user prompt and generate search query"""
     logger.info(f"Analyzing user prompt: {state['user_prompt']}")
     
     try:
-        # 使用LLM分析用户意图，生成Confluence搜索查询
+        # Generate search query using structured output
+        structured_llm = llm.with_structured_output(SearchQuery)
+        
         system_msg = SystemMessage(content="""
-你是一个Confluence搜索助手。根据用户的问题，生成最合适的Confluence CQL搜索查询。
+You are a Confluence search assistant. Based on the user's question, generate the most appropriate Confluence CQL search query.
 
-规则：
-- 如果用户问题包含具体的主题词，使用 text ~ "关键词" 或 siteSearch ~ "关键词"
-- 如果需要最新内容，添加时间过滤：lastModified > startOfMonth("-1M")
-- 如果用户指定了space，添加：space = "SPACE_KEY"
-- 保持查询简洁有效
-
-只返回CQL查询字符串，不要其他内容。
+Rules:
+- If the user's question contains specific keywords, use text ~ "keyword" or siteSearch ~ "keyword"
+- If recent content is needed, add time filter: lastModified > startOfMonth("-1M")
+- If user specified a space, add: space = "SPACE_KEY"
+- Keep the query concise and effective
         """)
         
-        human_msg = HumanMessage(content=f"用户问题：{state['user_prompt']}\n\n生成Confluence搜索查询：")
+        human_msg = HumanMessage(content=f"User question: {state['user_prompt']}")
         
-        response = await llm.ainvoke([system_msg, human_msg])
-        search_query = response.content.strip()
+        result = await structured_llm.ainvoke([system_msg, human_msg])  # type: ignore
         
-        logger.info(f"Generated search query: {search_query}")
+        logger.info(f"Generated search query: {result['query']} (reasoning: {result['reasoning']})")
         
         return {
-            "search_query": search_query,
-            "messages": [human_msg, response]
+            "search_query": result['query'],
+            "messages": [human_msg]
         }
     except Exception as e:
         logger.error(f"Error in analyze_prompt_node: {e}")
         return {
-            "search_query": f'text ~ "{state["user_prompt"]}"',  # 回退到简单查询
+            "search_query": f'text ~ "{state["user_prompt"]}"',  # Fallback to simple query
             "errors": [f"Prompt analysis failed: {str(e)}"]
         }
 
 
 async def search_confluence_node(state: AgentState) -> dict[str, Any]:
-    """节点2: 搜索Confluence"""
+    """Node 2: Search Confluence"""
     logger.info(f"Searching Confluence with query: {state['search_query']}")
     
     try:
-        # 搜索Confluence
+        # Search Confluence
         results = await search_pages(
             query=state['search_query'],
             limit=int(os.getenv("SEARCH_LIMIT", "10"))
         )
         
-        # 提取页面链接
+        # Extract page links
         page_links = []
         for page in results:
             if isinstance(page, dict) and page.get('id'):
@@ -101,7 +127,7 @@ async def search_confluence_node(state: AgentState) -> dict[str, Any]:
 
 
 async def fetch_pages_node(state: AgentState) -> dict[str, Any]:
-    """节点3: 获取页面内容"""
+    """Node 3: Fetch page content"""
     logger.info(f"Fetching {len(state['page_links'])} pages")
     
     pages_content = []
@@ -109,7 +135,7 @@ async def fetch_pages_node(state: AgentState) -> dict[str, Any]:
     
     for page_id in state['page_links']:
         try:
-            # 获取页面内容
+            # Fetch page content
             page_data = await get_page(
                 page_id=page_id,
                 include_metadata=True,
@@ -138,7 +164,7 @@ async def fetch_pages_node(state: AgentState) -> dict[str, Any]:
 
 
 async def save_to_s3_node(state: AgentState) -> dict[str, Any]:
-    """节点4: 保存内容到S3"""
+    """Node 4: Save content to S3"""
     logger.info(f"Saving {len(state['pages_content'])} pages to S3")
     
     s3_urls = []
@@ -147,16 +173,16 @@ async def save_to_s3_node(state: AgentState) -> dict[str, Any]:
     
     for idx, page in enumerate(state['pages_content']):
         try:
-            # 提取页面元数据
+            # Extract page metadata
             metadata = page.get('metadata', {})
             page_id = metadata.get('id', f'page_{idx}')
             title = metadata.get('title', 'Untitled')
             
-            # 构建S3 key
+            # Build S3 key
             safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
             s3_key = f"confluence-docs/{timestamp}/{page_id}_{safe_title}.json"
             
-            # 上传到S3
+            # Upload to S3
             s3_client.put_object(
                 Bucket=S3_BUCKET,
                 Key=s3_key,
@@ -187,11 +213,11 @@ async def save_to_s3_node(state: AgentState) -> dict[str, Any]:
 
 
 async def summarize_node(state: AgentState) -> dict[str, Any]:
-    """节点5: 总结页面内容并生成最终响应"""
+    """Node 5: Summarize page content and generate final response"""
     logger.info("Summarizing pages and generating final response")
     
     try:
-        # 准备页面内容摘要
+        # Prepare page content summary
         pages_summary = []
         for page in state['pages_content']:
             metadata = page.get('metadata', {})
@@ -200,68 +226,74 @@ async def summarize_node(state: AgentState) -> dict[str, Any]:
             pages_summary.append({
                 'title': metadata.get('title', 'Untitled'),
                 'url': metadata.get('url', ''),
-                'content_preview': content_data.get('value', '')[:500]  # 前500字符
+                'content_preview': content_data.get('value', '')[:500]  # First 500 characters
             })
         
-        # 构建提示词
+        # Generate summary using structured output
+        structured_llm = llm.with_structured_output(DocumentSummary)
+        
         system_msg = SystemMessage(content="""
-你是一个Confluence文档助手。根据用户的问题和检索到的Confluence页面，提供准确、有用的回答。
+You are a Confluence documentation assistant. Based on the user's question and the retrieved Confluence pages, provide accurate and helpful answers.
 
-要求：
-1. 直接回答用户的问题
-2. 引用相关页面的内容作为依据
-3. 提供页面标题和URL以便用户查看原文
-4. 如果页面内容不完全匹配问题，说明这一点
-5. 保持回答简洁明了
+Requirements:
+1. Answer the user's question directly
+2. Extract key points
+3. Record the source of referenced documents
+4. If page content doesn't fully match the question, mention this
+5. Keep the answer concise and clear
         """)
         
         user_content = f"""
-用户问题：{state['user_prompt']}
+User question: {state['user_prompt']}
 
-检索到的Confluence页面（共{len(pages_summary)}个）：
+Retrieved Confluence pages (total: {len(pages_summary)}):
 
 """
         for i, page in enumerate(pages_summary, 1):
             user_content += f"""
-{i}. 【{page['title']}】
+{i}. [{page['title']}]
    URL: {page['url']}
-   内容预览: {page['content_preview']}...
+   Content preview: {page['content_preview']}...
 
 """
-        
-        user_content += "\n请根据以上信息回答用户的问题。"
         
         human_msg = HumanMessage(content=user_content)
         
-        # 调用LLM生成总结
-        response = await llm.ainvoke([system_msg, human_msg])
-        summary = response.content
+        # Call LLM to generate structured summary
+        result = await structured_llm.ainvoke([system_msg, human_msg])  # type: ignore
         
-        # 构建最终响应
-        final_response = f"""{summary}
+        # Build final response
+        final_response = f"""{result['answer']}
 
----
-📚 相关文档已保存到S3:
+**Key Points:**
 """
+        for i, point in enumerate(result['key_points'], 1):
+            final_response += f"{i}. {point}\n"
+        
+        final_response += "\n**Referenced Documents:**\n"
+        for ref in result['references']:
+            final_response += f"- [{ref['title']}]({ref['url']})\n"
+        
+        final_response += "\n---\n📚 Related documents saved to S3:\n"
         for url in state['s3_urls']:
             final_response += f"- {url}\n"
         
         if state.get('errors'):
-            final_response += f"\n⚠️ 注意: 处理过程中出现了{len(state['errors'])}个错误，部分内容可能不完整。"
+            final_response += f"\n⚠️ Warning: {len(state['errors'])} error(s) occurred during processing, some content may be incomplete."
         
         logger.info("Summary generated successfully")
         
         return {
-            "summary": summary,
+            "summary": result['answer'],
             "final_response": final_response,
-            "messages": [human_msg, response]
+            "messages": [human_msg]
         }
         
     except Exception as e:
         error_msg = f"Summarization failed: {str(e)}"
         logger.error(error_msg)
         return {
-            "summary": "总结生成失败",
-            "final_response": f"抱歉，无法生成总结。错误：{str(e)}",
+            "summary": "Failed to generate summary",
+            "final_response": f"Sorry, unable to generate summary. Error: {str(e)}",
             "errors": [error_msg]
         }

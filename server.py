@@ -5,7 +5,7 @@ import logging
 
 from agent import run_agent
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -17,31 +17,31 @@ mcp = FastMCP("confluence-intelligent-agent")
 @mcp.tool()
 async def ask_confluence(user_prompt: str) -> str:
     """
-    智能Confluence助手 - 自动搜索、获取、保存和总结Confluence文档
+    Intelligent Confluence Assistant - Automatically search, retrieve, save, and summarize Confluence documents
     
-    这个工具会：
-    1. 分析您的问题，生成最佳搜索查询
-    2. 搜索Confluence相关页面
-    3. 获取页面完整内容
-    4. 将内容保存到S3（备份）
-    5. 基于页面内容总结并回答您的问题
+    This tool will:
+    1. Analyze your question and generate the best search query
+    2. Search for relevant Confluence pages
+    3. Retrieve complete page content
+    4. Save content to S3 (backup)
+    5. Summarize and answer your question based on page content
     
-    使用示例：
-    - "API认证的最佳实践是什么？"
-    - "最新的系统架构设计文档在哪里？"
-    - "关于数据库迁移的操作步骤"
-    - "团队的编码规范有哪些？"
+    Usage examples:
+    - "What are the best practices for API authentication?"
+    - "Where is the latest system architecture design document?"
+    - "Database migration operation steps"
+    - "What are the team's coding standards?"
     
     Args:
-        user_prompt: 您的问题或需求（用自然语言描述）
+        user_prompt: Your question or request (described in natural language)
     
     Returns:
-        详细的回答，包含相关文档链接和S3备份位置
+        Detailed answer with relevant document links and S3 backup locations
     """
     logger.info(f"Received user prompt: {user_prompt}")
     
     try:
-        # 运行Agent工作流
+        # Run Agent workflow
         result = await run_agent(user_prompt)
         
         if result["success"]:
@@ -49,16 +49,16 @@ async def ask_confluence(user_prompt: str) -> str:
             return result["response"]
         else:
             logger.error(f"Agent execution failed: {result['errors']}")
-            return f"抱歉，处理您的请求时遇到问题：\n{result['response']}"
+            return f"Sorry, encountered an issue while processing your request:\n{result['response']}"
             
     except Exception as e:
         logger.error(f"Unexpected error in ask_confluence: {e}", exc_info=True)
-        return f"系统错误：{str(e)}\n请稍后重试或联系管理员。"
+        return f"System error: {str(e)}\nPlease try again later or contact the administrator."
 
-# 添加健康检查路由
+# Add health check route
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> JSONResponse:
-    """健康检查端点"""
+    """Health check endpoint"""
     return JSONResponse(
         status_code=200,
         content={"status": "healthy", "service": "enterprise-doc-agent"}

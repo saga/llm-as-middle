@@ -1,7 +1,7 @@
 [project]
 name = "llm-as-middle"
-version = "0.2.0"
-description = "Intelligent MCP Agent for Confluence with LangGraph workflow"
+version = "0.3.0"
+description = "Intelligent MCP Agent for Confluence with LangGraph workflow and MSAL authentication"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,5 +15,6 @@ dependencies = [
     "langchain",
     "langchain-openai",
     "boto3",
-    "pydantic"
+    "pydantic",
+    "msal"
 ]
