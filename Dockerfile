@@ -12,6 +12,7 @@ COPY pyproject.toml ./
 COPY main.py ./
 COPY server.py ./
 COPY clients/ ./clients/
+COPY agent/ ./agent/
 
 # 使用uv安装依赖
 RUN uv pip install --system --no-cache -r pyproject.toml

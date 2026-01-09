@@ -1,69 +1,59 @@
 from mcp.server.fastmcp import FastMCP
-from clients.confluence import search_pages, get_page
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+import logging
 
-mcp = FastMCP("enterprise-doc-agent")
+from agent import run_agent
 
-@mcp.tool()
-async def confluence_search(query: str, limit: int = 10, spaces_filter: str | None = None):
-    """
-    Search Confluence content using simple terms or CQL.
-    
-    查询可以是简单文本（如'项目文档'）或CQL查询字符串。
-    简单查询默认使用'siteSearch'，如果不支持会自动回退到'text'搜索。
-    
-    CQL示例：
-    - 基本搜索: 'type=page AND space=DEV'
-    - 按标题搜索: 'title~"会议记录"'
-    - 使用siteSearch: 'siteSearch ~ "重要概念"'
-    - 使用text搜索: 'text ~ "重要概念"'
-    - 最近内容: 'created >= "2023-01-01"'
-    - 带标签的内容: 'label=documentation'
-    
-    Args:
-        query: Search query - 简单文本或CQL查询字符串
-        limit: Maximum number of results (1-50, 默认10)
-        spaces_filter: 可选，逗号分隔的space keys用于过滤结果
-    
-    Returns:
-        List of simplified Confluence page objects with metadata
-    """
-    pages = await search_pages(query, limit, spaces_filter)
-    return pages
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+mcp = FastMCP("confluence-intelligent-agent")
 
 @mcp.tool()
-async def confluence_get_page(
-    page_id: str | None = None,
-    title: str | None = None,
-    space_key: str | None = None,
-    include_metadata: bool = True,
-    convert_to_markdown: bool = True
-):
+async def ask_confluence(user_prompt: str) -> str:
     """
-    Get Confluence page content.
+    智能Confluence助手 - 自动搜索、获取、保存和总结Confluence文档
     
-    可以通过page_id或者(title + space_key)组合来获取页面。
-    如果提供了page_id，title和space_key将被忽略。
+    这个工具会：
+    1. 分析您的问题，生成最佳搜索查询
+    2. 搜索Confluence相关页面
+    3. 获取页面完整内容
+    4. 将内容保存到S3（备份）
+    5. 基于页面内容总结并回答您的问题
+    
+    使用示例：
+    - "API认证的最佳实践是什么？"
+    - "最新的系统架构设计文档在哪里？"
+    - "关于数据库迁移的操作步骤"
+    - "团队的编码规范有哪些？"
     
     Args:
-        page_id: Confluence页面ID（可从URL中获取）
-        title: 页面的精确标题（必须与space_key一起使用）
-        space_key: Space的key（必须与title一起使用）
-        include_metadata: 是否包含页面元数据（默认True）
-        convert_to_markdown: 转换内容为markdown(True)或保持HTML(False)，默认True
+        user_prompt: 您的问题或需求（用自然语言描述）
     
     Returns:
-        Page object with content and/or metadata
+        详细的回答，包含相关文档链接和S3备份位置
     """
-    page = await get_page(
-        page_id=page_id,
-        title=title,
-        space_key=space_key,
-        include_metadata=include_metadata,
-        convert_to_markdown=convert_to_markdown
-    )
-    return page
+    logger.info(f"Received user prompt: {user_prompt}")
+    
+    try:
+        # 运行Agent工作流
+        result = await run_agent(user_prompt)
+        
+        if result["success"]:
+            logger.info(f"Successfully processed request. Found {result['pages_count']} pages.")
+            return result["response"]
+        else:
+            logger.error(f"Agent execution failed: {result['errors']}")
+            return f"抱歉，处理您的请求时遇到问题：\n{result['response']}"
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in ask_confluence: {e}", exc_info=True)
+        return f"系统错误：{str(e)}\n请稍后重试或联系管理员。"
 
 # 添加健康检查路由
 @mcp.custom_route("/health", methods=["GET"])

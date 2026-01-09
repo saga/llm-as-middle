@@ -1,60 +1,102 @@
-┌──────────────────────────┐
-│ VS Code Copilot Chat     │
-│  (MCP Client)            │
-└──────────┬───────────────┘
-           │ MCP over SSE
-           │ http://doc-mcp:8000/sse
-           ▼
-┌────────────────────────────────────────────┐
-│ Doc MCP Server (K8s Pod)                   │
-│                                            │
-│  ┌─────────────────────────────────────┐   │
-│  │ FastMCP Server                       │   │
-│  │  - SSE Transport (port 8000)         │   │
-│  │  - Health Check: /health             │   │
-│  │  Tools:                              │   │
-│  │   • search_confluence(query, limit)  │   │
-│  │   • get_confluence_page(page_id)     │   │
-│  └──────────────┬──────────────────────┘   │
-│                 │ OpenAI SDK               │
-│                 ▼                           │
-│  ┌─────────────────────────────────────┐   │
-│  │ Confluence Client                    │   │
-│  │  - Uses OpenAI SDK                   │   │
-│  │  - Calls LiteLLM Proxy               │   │
-│  └──────────────┬──────────────────────┘   │
-└─────────────────┼──────────────────────────┘
-                  │ HTTP/HTTPS
-                  │ LITELLM_BASE_URL
-                  ▼
-      ┌─────────────────────────┐
-      │ LiteLLM Proxy            │
-      │  (External Service)      │
-      │  - Bridges to MCP        │
-      │  - Model: confluence-mcp │
-      └────────────┬─────────────┘
-                   │ MCP Protocol
-                   ▼
-      ┌─────────────────────────┐
-      │ Confluence MCP Server    │
-      │  (External)              │
-      │  Tools:                  │
-      │   • search               │
-      │   • get_page             │
-      └────────────┬─────────────┘
-                   │ REST API
-                   ▼
-      ┌─────────────────────────┐
-      │ Confluence API           │
-      └─────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    VS Code Copilot Chat                          │
+│                     (MCP Client)                                 │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ MCP over SSE
+                           │ http://confluence-agent:8000/sse
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│              Confluence Intelligent Agent (K8s Pod)              │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ FastMCP Server                                             │ │
+│  │  - SSE Transport (port 8000)                               │ │
+│  │  - Health Check: /health                                   │ │
+│  │  Tool:                                                     │ │
+│  │   • ask_confluence(user_prompt: str) → str                │ │
+│  │     接收用户自然语言问题，返回完整答案                        │ │
+│  └──────────────┬─────────────────────────────────────────────┘ │
+│                 │                                                │
+│                 ▼                                                │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ LangGraph Agent Workflow                                   │ │
+│  │                                                            │ │
+│  │  [1] analyze_prompt_node                                  │ │
+│  │      ├─ 输入: user_prompt                                  │ │
+│  │      ├─ 调用: LLM (GPT-4)                                 │ │
+│  │      └─ 输出: search_query (CQL)                          │ │
+│  │            ↓                                               │ │
+│  │  [2] search_confluence_node                               │ │
+│  │      ├─ 输入: search_query                                │ │
+│  │      ├─ 调用: Confluence MCP (via LiteLLM)               │ │
+│  │      └─ 输出: page_links[]                               │ │
+│  │            ↓                                               │ │
+│  │  [3] fetch_pages_node                                     │ │
+│  │      ├─ 输入: page_links[]                                │ │
+│  │      ├─ 调用: Confluence MCP (并发)                       │ │
+│  │      └─ 输出: pages_content[]                            │ │
+│  │            ↓                                               │ │
+│  │  [4] save_to_s3_node                                      │ │
+│  │      ├─ 输入: pages_content[]                             │ │
+│  │      ├─ 调用: AWS S3 API                                 │ │
+│  │      └─ 输出: s3_urls[]                                  │ │
+│  │            ↓                                               │ │
+│  │  [5] summarize_node                                       │ │
+│  │      ├─ 输入: user_prompt + pages_content[]              │ │
+│  │      ├─ 调用: LLM (GPT-4)                                │ │
+│  │      └─ 输出: final_response (答案+引用+S3链接)          │ │
+│  │                                                            │ │
+│  └────────┬───────────────────┬──────────────────┬───────────┘ │
+└───────────┼───────────────────┼──────────────────┼─────────────┘
+            │                   │                  │
+            │ OpenAI SDK        │ OpenAI SDK       │ boto3
+            ▼                   ▼                  ▼
+   ┌──────────────────┐  ┌─────────────┐  ┌──────────────┐
+   │  LiteLLM Proxy   │  │  OpenAI API │  │   AWS S3     │
+   │  (External)      │  │  (GPT-4)    │  │   Bucket     │
+   │                  │  │             │  │              │
+   │  Model:          │  │  用于:       │  │  文档归档:    │
+   │  confluence-mcp  │  │  • 意图分析  │  │  confluence- │
+   └────────┬─────────┘  │  • 内容总结  │  │  docs/       │
+            │            └─────────────┘  └──────────────┘
+            │ MCP Protocol
+            ▼
+   ┌──────────────────────────┐
+   │ Confluence MCP Server    │
+   │ (sooperset/mcp-atlassian)│
+   │                          │
+   │  Tools:                  │
+   │   • confluence_search    │
+   │   • confluence_get_page  │
+   └────────────┬─────────────┘
+                │ Confluence REST API
+                ▼
+   ┌──────────────────────────┐
+   │   Confluence Server      │
+   │   (Atlassian)            │
+   └──────────────────────────┘
 
-技术栈：
-- Python 3.12+ with FastMCP
-- OpenAI SDK for LiteLLM communication
-- Kubernetes for orchestration
-- SSE (Server-Sent Events) for MCP transport
+数据流示例:
+═════════════
+用户问题: "团队的API认证最佳实践是什么？"
+    ↓
+[1] LLM分析 → 'text ~ "API 认证 最佳实践"'
+    ↓
+[2] Confluence搜索 → [page_12345, page_67890]
+    ↓
+[3] 并发获取页面 → [完整内容A, 完整内容B]
+    ↓
+[4] S3保存 → [s3://.../.../12345.json, s3://.../.../67890.json]
+    ↓
+[5] LLM总结 → "根据文档，最佳实践包括：1. OAuth 2.0 ..."
+    ↓
+返回给用户（含引用和S3链接）
 
-环境变量：
-- LITELLM_BASE_URL: LiteLLM Proxy地址
-- LITELLM_API_KEY: API密钥
-- CONFLUENCE_MODEL: 模型名称 (默认: confluence-mcp)
+关键特性:
+═════════
+✓ 智能工作流 - LangGraph自动编排5个步骤
+✓ 意图理解 - LLM分析用户问题生成最优查询
+✓ 并发处理 - 同时获取多个页面提高速度
+✓ 自动归档 - 所有文档保存到S3带元数据
+✓ 上下文总结 - 基于真实内容回答用户问题
+✓ 引用溯源 - 提供页面标题、URL和S3链接

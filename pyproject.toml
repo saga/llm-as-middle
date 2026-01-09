@@ -1,14 +1,19 @@
 [project]
 name = "llm-as-middle"
-version = "0.1.0"
-description = "MCP Server for Confluence queries via LiteLLM proxy"
+version = "0.2.0"
+description = "Intelligent MCP Agent for Confluence with LangGraph workflow"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.0.0",
-    "openai>=1.0.0",
-    "httpx>=0.27.0",
-    "python-dotenv>=1.0.0",
-    "uvicorn>=0.30.0",
-    "starlette>=0.37.0"
+    "mcp",
+    "openai",
+    "httpx",
+    "python-dotenv",
+    "uvicorn",
+    "starlette",
+    "langgraph",
+    "langchain",
+    "langchain-openai",
+    "boto3",
+    "pydantic"
 ]
