@@ -1,0 +1,28 @@
+┌──────────────────────────┐
+│ VS Code Copilot Chat     │
+│  (MCP Client)            │
+└──────────┬───────────────┘
+           │ MCP (SSE/HTTP)
+           ▼
+┌────────────────────────────────────────────┐
+│ Your Python App (K8s Pod)                  │
+│                                            │
+│  ┌─────────────────────────────────────┐   │
+│  │ MCP Server (for Copilot)             │◄─┘
+│  │  - exposes tools                     │
+│  │  - list/search/get docs              │
+│  └──────────────┬──────────────────────┘
+│                 │ MCP client calls
+│                 ▼
+│  ┌─────────────────────────────────────┐
+│  │ MCP Client Layer                     │
+│  │  - calls Confluence MCP Server       │
+│  │  - calls Search MCP Server           │
+│  └──────────────┬──────────────────────┘
+│                 ▼
+│  ┌─────────────────────────────────────┐
+│  │ External MCP Servers                 │
+│  │  - confluence-mcp                    │
+│  │  - search-mcp                       │
+│  └─────────────────────────────────────┘
+└────────────────────────────────────────────┘
