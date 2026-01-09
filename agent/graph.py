@@ -47,21 +47,25 @@ def create_agent_graph():
 agent_graph = create_agent_graph()
 
 
-async def run_agent(user_prompt: str) -> dict:
+async def run_agent(user_prompt: str, system_prompt: str = "") -> dict:
     """
     Run Agent to process user request
     
     Args:
         user_prompt: User's question or request
+        system_prompt: Optional system instructions for response style
         
     Returns:
         Dictionary containing final response
     """
     logger.info(f"Running agent for prompt: {user_prompt}")
+    if system_prompt:
+        logger.info(f"Using system prompt: {system_prompt[:100]}...")
     
     # Initialize state
     initial_state: AgentState = {
         "user_prompt": user_prompt,
+        "system_prompt": system_prompt,
         "search_query": "",
         "search_results": [],
         "page_links": [],

@@ -232,16 +232,24 @@ async def summarize_node(state: AgentState) -> dict[str, Any]:
         # Generate summary using structured output
         structured_llm = llm.with_structured_output(DocumentSummary)
         
-        system_msg = SystemMessage(content="""
-You are a Confluence documentation assistant. Based on the user's question and the retrieved Confluence pages, provide accurate and helpful answers.
+        # Build system message with optional custom system prompt
+        base_system_content = """You are a Confluence documentation assistant. Based on the user's question and the retrieved Confluence pages, provide accurate and helpful answers.
 
 Requirements:
 1. Answer the user's question directly
 2. Extract key points
 3. Record the source of referenced documents
 4. If page content doesn't fully match the question, mention this
-5. Keep the answer concise and clear
-        """)
+5. Keep the answer concise and clear"""
+        
+        if state.get('system_prompt'):
+            system_content = f"{state['system_prompt']}
+
+{base_system_content}"
+        else:
+            system_content = base_system_content
+        
+        system_msg = SystemMessage(content=system_content)
         
         user_content = f"""
 User question: {state['user_prompt']}

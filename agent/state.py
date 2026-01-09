@@ -7,6 +7,7 @@ class AgentState(TypedDict):
     """Agent workflow state"""
     # User input
     user_prompt: str
+    system_prompt: str
     
     # Search phase
     search_query: str

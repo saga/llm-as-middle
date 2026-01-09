@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("confluence-intelligent-agent")
 
 @mcp.tool()
-async def ask_confluence(user_prompt: str) -> str:
+async def ask_confluence(user_prompt: str, system_prompt: str = "") -> str:
     """
     Intelligent Confluence Assistant - Automatically search, retrieve, save, and summarize Confluence documents
     
@@ -34,15 +34,18 @@ async def ask_confluence(user_prompt: str) -> str:
     
     Args:
         user_prompt: Your question or request (described in natural language)
+        system_prompt: Optional system instructions to guide the response style and behavior
     
     Returns:
         Detailed answer with relevant document links and S3 backup locations
     """
     logger.info(f"Received user prompt: {user_prompt}")
+    if system_prompt:
+        logger.info(f"System prompt provided: {system_prompt[:100]}...")
     
     try:
         # Run Agent workflow
-        result = await run_agent(user_prompt)
+        result = await run_agent(user_prompt, system_prompt=system_prompt)
         
         if result["success"]:
             logger.info(f"Successfully processed request. Found {result['pages_count']} pages.")
