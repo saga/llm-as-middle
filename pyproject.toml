@@ -1,11 +1,14 @@
 [project]
 name = "llm-as-middle"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP Server for Confluence queries via LiteLLM proxy"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp",
-    "langgraph",
-    "httpx"
+    "mcp>=1.0.0",
+    "openai>=1.0.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "uvicorn>=0.30.0",
+    "starlette>=0.37.0"
 ]

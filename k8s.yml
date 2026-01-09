@@ -2,15 +2,80 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: doc-mcp
+  namespace: default
+  labels:
+    app: doc-mcp
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: doc-mcp
   template:
+    metadata:
+      labels:
+        app: doc-mcp
     spec:
       containers:
         - name: app
           image: your-org/doc-mcp:latest
+          imagePullPolicy: Always
           ports:
-            - containerPort: 8000
+            - name: http
+              containerPort: 8000
+              protocol: TCP
           env:
-            - name: CONFLUENCE_MCP_URL
-              value: http://confluence-mcp:8080/sse
+            - name: LITELLM_BASE_URL
+              value: "http://litellm-proxy:4000"
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secret
+                  key: api-key
+                  optional: true
+            - name: CONFLUENCE_MODEL
+              value: "confluence-mcp"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: doc-mcp
+  namespace: default
+  labels:
+    app: doc-mcp
+spec:
+  type: ClusterIP
+  selector:
+    app: doc-mcp
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: litellm-secret
+  namespace: default
+type: Opaque
+stringData:
+  api-key: "your-litellm-api-key-here"

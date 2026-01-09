@@ -2,27 +2,59 @@
 │ VS Code Copilot Chat     │
 │  (MCP Client)            │
 └──────────┬───────────────┘
-           │ MCP (SSE/HTTP)
+           │ MCP over SSE
+           │ http://doc-mcp:8000/sse
            ▼
 ┌────────────────────────────────────────────┐
-│ Your Python App (K8s Pod)                  │
+│ Doc MCP Server (K8s Pod)                   │
 │                                            │
 │  ┌─────────────────────────────────────┐   │
-│  │ MCP Server (for Copilot)             │◄─┘
-│  │  - exposes tools                     │
-│  │  - list/search/get docs              │
-│  └──────────────┬──────────────────────┘
-│                 │ MCP client calls
-│                 ▼
-│  ┌─────────────────────────────────────┐
-│  │ MCP Client Layer                     │
-│  │  - calls Confluence MCP Server       │
-│  │  - calls Search MCP Server           │
-│  └──────────────┬──────────────────────┘
-│                 ▼
-│  ┌─────────────────────────────────────┐
-│  │ External MCP Servers                 │
-│  │  - confluence-mcp                    │
-│  │  - search-mcp                       │
-│  └─────────────────────────────────────┘
-└────────────────────────────────────────────┘
+│  │ FastMCP Server                       │   │
+│  │  - SSE Transport (port 8000)         │   │
+│  │  - Health Check: /health             │   │
+│  │  Tools:                              │   │
+│  │   • search_confluence(query, limit)  │   │
+│  │   • get_confluence_page(page_id)     │   │
+│  └──────────────┬──────────────────────┘   │
+│                 │ OpenAI SDK               │
+│                 ▼                           │
+│  ┌─────────────────────────────────────┐   │
+│  │ Confluence Client                    │   │
+│  │  - Uses OpenAI SDK                   │   │
+│  │  - Calls LiteLLM Proxy               │   │
+│  └──────────────┬──────────────────────┘   │
+└─────────────────┼──────────────────────────┘
+                  │ HTTP/HTTPS
+                  │ LITELLM_BASE_URL
+                  ▼
+      ┌─────────────────────────┐
+      │ LiteLLM Proxy            │
+      │  (External Service)      │
+      │  - Bridges to MCP        │
+      │  - Model: confluence-mcp │
+      └────────────┬─────────────┘
+                   │ MCP Protocol
+                   ▼
+      ┌─────────────────────────┐
+      │ Confluence MCP Server    │
+      │  (External)              │
+      │  Tools:                  │
+      │   • search               │
+      │   • get_page             │
+      └────────────┬─────────────┘
+                   │ REST API
+                   ▼
+      ┌─────────────────────────┐
+      │ Confluence API           │
+      └─────────────────────────┘
+
+技术栈：
+- Python 3.12+ with FastMCP
+- OpenAI SDK for LiteLLM communication
+- Kubernetes for orchestration
+- SSE (Server-Sent Events) for MCP transport
+
+环境变量：
+- LITELLM_BASE_URL: LiteLLM Proxy地址
+- LITELLM_API_KEY: API密钥
+- CONFLUENCE_MODEL: 模型名称 (默认: confluence-mcp)
