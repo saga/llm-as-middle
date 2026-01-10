@@ -3,7 +3,6 @@ import os
 import logging
 from typing import Any, Optional, Callable
 from pydantic import SecretStr
-from openai import AsyncOpenAI
 from langchain_openai import ChatOpenAI
 from auth import get_access_token
 

@@ -574,7 +574,7 @@ wheels = [
 
 [[package]]
 name = "llm-as-middle"
-version = "0.2.0"
+version = "0.4.0"
 source = { virtual = "." }
 dependencies = [
     { name = "boto3" },
@@ -584,7 +584,6 @@ dependencies = [
     { name = "langgraph" },
     { name = "mcp" },
     { name = "msal" },
-    { name = "openai" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "starlette" },
@@ -600,7 +599,6 @@ requires-dist = [
     { name = "langgraph" },
     { name = "mcp" },
     { name = "msal" },
-    { name = "openai" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "starlette" },
