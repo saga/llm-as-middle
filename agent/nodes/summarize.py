@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from agent.state import AgentState
-from ._shared import DocumentSummary, get_llm
+from ._shared import DocumentSummary, llm
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,6 @@ async def summarize_node(state: AgentState) -> dict[str, Any]:
                 'content_preview': content_data.get('value', '')[:500]
             })
         
-        llm = get_llm()
         structured_llm = llm.with_structured_output(DocumentSummary)
         
         base_system_content = """You are a Confluence documentation assistant. Based on the user's question and the retrieved Confluence pages, provide accurate and helpful answers.

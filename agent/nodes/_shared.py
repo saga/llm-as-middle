@@ -2,8 +2,7 @@
 import os
 import boto3
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
-from auth import get_access_token
+from clients._client_wrapper import create_chat_openai
 
 
 class SearchQuery(BaseModel):
@@ -19,18 +18,8 @@ class DocumentSummary(BaseModel):
     references: list[dict[str, str]] = Field(description="Referenced documents with title and url")
 
 
-def get_llm():
-    """Get LLM instance configured with MSAL authentication"""
-    access_token = get_access_token()
-    from pydantic import SecretStr
-    
-    return ChatOpenAI(
-        model=os.getenv("LLM_MODEL", "gpt-4"),
-        temperature=0.7,
-        api_key=SecretStr(access_token),
-        base_url=os.getenv("LITELLM_BASE_URL", "http://localhost:4000"),
-        default_headers={"Authorization": f"Bearer {access_token}"}
-    )
+# Singleton LLM instance
+llm = create_chat_openai()
 
 
 def get_s3_client():

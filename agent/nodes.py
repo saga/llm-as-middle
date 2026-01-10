@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any, Optional
 import boto3
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from clients.confluence import search_pages, get_page
@@ -16,7 +15,7 @@ from clients.leanix import (
     search_applications,
     get_fact_sheet_types
 )
-from auth import get_access_token
+from clients._client_wrapper import create_chat_openai
 from .state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -35,24 +34,8 @@ class DocumentSummary(BaseModel):
     key_points: list[str] = Field(description="Key points extracted from documents")
     references: list[dict[str, str]] = Field(description="Referenced documents with title and url")
 
-# Initialize LLM - using MSAL token
-def get_llm():
-    """Get LLM instance configured with MSAL authentication"""
-    # Get Azure AD access token
-    access_token = get_access_token()
-    
-    from pydantic import SecretStr
-    
-    return ChatOpenAI(
-        model=os.getenv("LLM_MODEL", "gpt-4"),
-        temperature=0.7,
-        api_key=SecretStr(access_token),  # Use MSAL token as API key
-        base_url=os.getenv("LITELLM_BASE_URL", "http://localhost:4000"),
-        default_headers={"Authorization": f"Bearer {access_token}"}
-    )
-
-# Initialize LLM
-llm = get_llm()
+# Singleton LLM instance
+llm = create_chat_openai()
 
 # Initialize S3 client
 s3_client = boto3.client(

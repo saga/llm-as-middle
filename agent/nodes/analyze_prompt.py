@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from agent.state import AgentState
-from ._shared import SearchQuery, get_llm
+from ._shared import SearchQuery, llm
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,6 @@ async def analyze_prompt_node(state: AgentState) -> dict[str, Any]:
     logger.info(f"Analyzing user prompt: {state['user_prompt']}")
     
     try:
-        llm = get_llm()
         structured_llm = llm.with_structured_output(SearchQuery)
         
         system_msg = SystemMessage(content="""

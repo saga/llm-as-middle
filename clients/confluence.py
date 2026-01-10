@@ -1,98 +1,68 @@
 import os
 import json
-from openai import AsyncOpenAI
+import logging
+from pydantic import SecretStr
+from langchain_core.utils.function_calling import convert_to_openai_function
+from ._client_wrapper import ChatOpenAIWrapper
+
+logger = logging.getLogger(__name__)
 
 # LiteLLM proxy作为MCP客户端的桥接
 LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "http://litellm-proxy:4000")
 LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "dummy-key")
 CONFLUENCE_MODEL = os.getenv("CONFLUENCE_MODEL", "confluence-mcp")
 
-# 初始化OpenAI客户端，指向LiteLLM proxy
-client = AsyncOpenAI(
-    base_url=LITELLM_BASE_URL,
-    api_key=LITELLM_API_KEY
+# 使用ChatOpenAI（更简洁统一）
+llm = ChatOpenAIWrapper(
+    model=CONFLUENCE_MODEL,
+    api_key=SecretStr(LITELLM_API_KEY),
+    base_url=LITELLM_BASE_URL
 )
 
 async def search_pages(query: str, limit: int = 10, spaces_filter: str | None = None):
     """
     通过LiteLLM proxy调用Confluence MCP的confluence_search工具
     
-    根据sooperset/mcp-atlassian实现：
-    - 工具名：confluence_search
-    - 参数：query (str), limit (int, 默认10), spaces_filter (str | None)
-    - 返回：JSON string representing a list of simplified page objects
-    
-    简化的页面对象包含：
-    {
-      "id": "页面ID",
-      "title": "页面标题",
-      "type": "page",
-      "url": "页面URL",
-      "space": {"key": "SPACE", "name": "Space名称"},
-      "author": "作者名",
-      "created": "创建时间",
-      "updated": "更新时间",
-      "content": {"value": "内容", "format": "markdown/storage"}
-    }
+    使用ChatOpenAI + tool calling实现，更简洁统一
     """
     try:
-        # 构建工具调用参数
-        tool_args = {"query": query, "limit": limit}
-        if spaces_filter:
-            tool_args["spaces_filter"] = spaces_filter
+        from langchain_core.messages import HumanMessage
         
-        # 使用OpenAI SDK调用（假设LiteLLM已配置MCP工具转发）
-        response = await client.chat.completions.create(
-            model=CONFLUENCE_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Search Confluence: {query}"
+        # 定义工具schema
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "confluence_search",
+                "description": "Search Confluence content",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "integer", "default": 10},
+                        "spaces_filter": {"type": "string"}
+                    },
+                    "required": ["query"]
                 }
-            ],
-            tools=[
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "confluence_search",
-                        "description": "Search Confluence content",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {"type": "string"},
-                                "limit": {"type": "integer", "default": 10},
-                                "spaces_filter": {"type": "string"}
-                            },
-                            "required": ["query"]
-                        }
-                    }
-                }
-            ],
+            }
+        }]
+        
+        # 使用ChatOpenAI调用，更简洁
+        response = await llm.ainvoke(
+            [HumanMessage(content=f"Search Confluence: {query}")],
+            tools=tools,
             tool_choice={"type": "function", "function": {"name": "confluence_search"}}
         )
         
-        # 解析响应
-        if response.choices[0].message.tool_calls:
-            # 如果LiteLLM返回工具执行结果
-            result_content = response.choices[0].message.content
-            if result_content:
-                try:
-                    return json.loads(result_content)
-                except json.JSONDecodeError:
-                    pass
-        
-        # 如果没有tool_calls，尝试解析content
-        content = response.choices[0].message.content
-        if content:
+        # 解析响应（LangChain格式）
+        if hasattr(response, 'content') and response.content:
             try:
-                return json.loads(content)
+                return json.loads(response.content)
             except json.JSONDecodeError:
-                # 返回空列表
-                return []
+                pass
         
         return []
     except Exception as e:
-        print(f"Error searching pages: {e}")
+        logger.error(f"Error searching pages: {e}")
         return []
 
 async def get_page(
@@ -141,41 +111,45 @@ async def get_page(
             model=CONFLUENCE_MODEL,
             messages=[
                 {
-                    "role": "user",
-                    "content": f"Get Confluence page: {page_id or title}"
-                }
-            ],
-            tools=[
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "confluence_get_page",
-                        "description": "Get Confluence page content",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "page_id": {"type": "string"},
-                                "title": {"type": "string"},
-                                "space_key": {"type": "string"},
-                                "include_metadata": {"type": "boolean", "default": True},
-                                "convert_to_markdown": {"type": "boolean", "default": True}
-                            }
-                        }
+    使用ChatOpenAI实现，与其他LLM调用保持一致
+    """
+    try:
+        from langchain_core.messages import HumanMessage
+        
+        if not page_id and not (title and space_key):
+            return {"error": "Either page_id OR both title and space_key must be provided"}
+        
+        # 定义工具
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "confluence_get_page",
+                "description": "Get Confluence page content",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "space_key": {"type": "string"},
+                        "include_metadata": {"type": "boolean", "default": True},
+                        "convert_to_markdown": {"type": "boolean", "default": True}
                     }
                 }
-            ],
+            }
+        }]
+        
+        response = await llm.ainvoke(
+            [HumanMessage(content=f"Get Confluence page: {page_id or title}")],
+            tools=tools,
             tool_choice={"type": "function", "function": {"name": "confluence_get_page"}}
         )
         
-        # 解析响应
-        content = response.choices[0].message.content
-        if content:
+        if hasattr(response, 'content') and response.content:
             try:
-                return json.loads(content)
+                return json.loads(response.content)
             except json.JSONDecodeError:
-                return {"content": {"value": content}}
+                return {"content": {"value": response.content}}
         
         return {}
     except Exception as e:
-        print(f"Error getting page: {e}")
-        return {"error": str(e)}
+        logger.error

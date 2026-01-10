@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from agent.state import AgentState
-from ._shared import DocumentSummary, get_llm
+from ._shared import DocumentSummary, llm
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ async def summarize_leanix_node(state: AgentState) -> dict[str, Any]:
                 'updated_at': fs.get('updatedAt', '')
             })
         
-        llm = get_llm()
         structured_llm = llm.with_structured_output(DocumentSummary)
         
         base_system_content = """You are a LeanIX Enterprise Architecture assistant. Based on the user's question and the retrieved fact sheets, provide accurate and helpful answers about the organization's applications, data, processes, and IT landscape.
