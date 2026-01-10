@@ -1,6 +1,6 @@
 # Confluence Intelligent Agent (MCP Server)
 
-基于LangGraph的智能Confluence文档助手，为VS Code Copilot Chat提供智能文档检索、总结和归档服务。
+基于LangGraph的智能Confluence文档助手和LeanIX企业架构搜索工具，为VS Code Copilot Chat提供智能文档检索、总结和归档服务。
 
 ## 🌟 核心特性
 
@@ -12,6 +12,14 @@
 3. **📄 内容获取** - 批量获取搜索到的页面完整内容
 4. **💾 S3归档** - 将所有页面内容保存到S3（带时间戳和元数据）
 5. **🤖 智能总结** - 基于页面内容回答用户问题，提供引用链接
+
+### LeanIX Enterprise Architecture搜索
+新增LeanIX集成，支持搜索和分析企业架构数据：
+
+- **🏢 Fact Sheet搜索** - 搜索Applications、DataObjects、ITComponents等
+- **📊 GraphQL API** - 使用LeanIX GraphQL API获取详细架构信息
+- **🔗 关系分析** - 查询fact sheet之间的依赖和关联
+- **💾 数据归档** - 将架构数据保存到S3供后续分析
 
 ### 与传统MCP Server的区别
 - **传统**: 提供简单的search/get工具，由客户端（Copilot）决定如何使用
@@ -68,6 +76,10 @@ AZURE_SCOPE=https://cognitiveservices.azure.com/.default
 LITELLM_BASE_URL=http://localhost:4000
 CONFLUENCE_MODEL=confluence-mcp
 
+# LeanIX配置（用于企业架构搜索）
+LEANIX_SUBDOMAIN=your-company-subdomain  # 例如: mycompany (对应 mycompany.leanix.net)
+LEANIX_API_TOKEN=your-leanix-api-token   # 从LeanIX管理面板获取
+
 # LLM（用于意图分析和总结）
 LLM_MODEL=gpt-4
 
@@ -81,7 +93,9 @@ S3_BUCKET=confluence-docs-backup
 SEARCH_LIMIT=10  # 最多搜索多少个页面
 ```
 
-**重要**: 详细的Azure AD认证配置请参考 [MSAL认证集成说明](MSAL_AUTH_GUIDE.md)
+**重要**: 
+- 详细的Azure AD认证配置请参考 [MSAL认证集成说明](MSAL_AUTH_GUIDE.md)
+- LeanIX集成配置和使用指南请参考 [LeanIX集成指南](LEANIX_INTEGRATION_GUIDE.md)
 
 ### 2. 安装依赖
 
@@ -93,7 +107,34 @@ uv sync
 pip install -e .
 ```
 
-### 3. 运行服务
+### 3. 测试LeanIX连接（可选）
+
+如果配置了LeanIX，可以运行测试脚本验证连接：
+
+```bash
+python test_leanix_integration.py
+```
+
+成功的输出示例：
+```
+============================================================
+LeanIX集成测试
+============================================================
+✓ LeanIX子域名: mycompany
+✓ API Token: ********************abcd
+
+测试 1: 获取Fact Sheet类型
+------------------------------------------------------------
+✓ 成功获取 9 个类型:
+  - Application
+  - BusinessCapability
+  - DataObject
+  ...
+
+✅ 所有测试完成!
+```
+
+### 4. 运行服务
 
 ```bash
 # 本地开发
@@ -116,6 +157,8 @@ python main.py
 ```
 
 ## 💡 使用示例
+
+### Confluence文档搜索
 
 在VS Code Copilot Chat中：
 
@@ -142,6 +185,71 @@ Agent会自动完成工作流并返回：
 📚 相关文档已保存到S3:
 - s3://confluence-docs-backup/confluence-docs/20260109_143022/12345_API_Security_Guidelines.json
 - s3://confluence-docs-backup/confluence-docs/20260109_143022/67890_Authentication_Best_Practices.json
+```
+
+### LeanIX企业架构搜索
+
+使用`search_leanix`工具搜索企业架构信息：
+
+```
+@workspace 使用 #search_leanix
+
+问：查找所有CRM相关的应用系统
+```
+
+返回结果：
+
+```json
+{
+  "success": true,
+  "message": "Found 5 fact sheet(s)",
+  "query": "CRM",
+  "type_filter": "Application",
+  "count": 5,
+  "results": [
+    {
+      "id": "abc-123",
+      "name": "Salesforce CRM",
+      "type": "Application",
+      "description": "Customer relationship management platform",
+      "tags": ["CRM", "Sales", "Cloud"],
+      "updated_at": "2026-01-05T10:30:00Z"
+    },
+    {
+      "id": "def-456",
+      "name": "Microsoft Dynamics",
+      "type": "Application",
+      "description": "Enterprise CRM and ERP solution",
+      "tags": ["CRM", "ERP", "Microsoft"],
+      "updated_at": "2026-01-03T14:20:00Z"
+    }
+  ]
+}
+```
+
+**获取可用的Fact Sheet类型：**
+
+```
+@workspace 使用 #get_leanix_fact_sheet_types
+```
+
+返回：
+```json
+{
+  "success": true,
+  "count": 9,
+  "types": [
+    "Application",
+    "BusinessCapability",
+    "DataObject",
+    "ITComponent",
+    "Interface",
+    "Process",
+    "Project",
+    "Provider",
+    "UserGroup"
+  ]
+}
 ```
 
 ## 🛠️ 技术栈
@@ -200,6 +308,7 @@ kubectl logs -f deployment/confluence-agent
 │   └── __init__.py
 ├── clients/               # 外部服务客户端
 │   ├── confluence.py     # Confluence MCP客户端
+│   ├── leanix.py         # LeanIX GraphQL客户端
 │   └── confluence_mcp_direct.py  # 直接MCP连接（备选）
 ├── server.py             # MCP Server定义
 ├── main.py               # 应用入口
